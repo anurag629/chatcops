@@ -12,6 +12,8 @@ export interface MessageData {
   content: string;
   status?: MessageStatus;
   errorType?: MessageErrorType;
+  /** Shown under the content when a reply fails after some of it already streamed. */
+  errorText?: string;
 }
 
 export interface MessageActions {
@@ -142,6 +144,13 @@ export class Messages {
     content.className = 'cc-message-content';
     content.innerHTML = msg.role === 'assistant' ? renderMarkdown(msg.content) : this.escapeHtml(msg.content);
     el.appendChild(content);
+
+    if (msg.status === 'error' && msg.errorText) {
+      const note = document.createElement('div');
+      note.className = 'cc-message-error-note';
+      note.textContent = msg.errorText;
+      el.appendChild(note);
+    }
 
     const actions = this.createActionsContainer(msg);
     if (actions) {

@@ -277,6 +277,58 @@ describe('Widget', () => {
     });
   });
 
+  it('keeps streamed text when an error arrives partway through and shows the error under it', async () => {
+    const widget = new Widget({ apiUrl: 'https://api.test/chat' });
+    widget.init();
+    getInternals(widget).client.sendMessage = vi.fn().mockImplementationOnce(async function* () {
+      yield { content: 'Here is the first half' };
+      yield { content: ' of the answer' };
+      yield { error: 'provider_error' };
+    });
+
+    await getInternals(widget).handleSend('Tell me everything');
+
+    const failed = getInternals(widget).messages.at(-1)!;
+    expect(failed).toMatchObject({ role: 'assistant', status: 'error', content: 'Here is the first half of the answer' });
+    const bubbles = getInternals(widget).shadow.querySelectorAll('.cc-message-assistant');
+    const bubble = bubbles[bubbles.length - 1];
+    expect(bubble.querySelector('.cc-message-content')?.textContent).toContain('Here is the first half of the answer');
+    expect(bubble.querySelector('.cc-message-error-note')?.textContent).toBeTruthy();
+    expect(bubble.querySelector('.cc-message-retry')).toBeTruthy();
+  });
+
+  it('shows the error as the content when nothing streamed before it', async () => {
+    const widget = new Widget({ apiUrl: 'https://api.test/chat' });
+    widget.init();
+    getInternals(widget).client.sendMessage = vi.fn().mockImplementationOnce(async function* () {
+      yield { error: 'provider_error' };
+    });
+
+    await getInternals(widget).handleSend('Hi');
+
+    const bubbles = getInternals(widget).shadow.querySelectorAll('.cc-message-assistant');
+    const bubble = bubbles[bubbles.length - 1];
+    expect(bubble.querySelector('.cc-message-content')?.textContent?.trim()).toBeTruthy();
+    expect(bubble.querySelector('.cc-message-error-note')).toBeNull();
+  });
+
+  it('does not duplicate the bubble when the stream throws after some text', async () => {
+    const widget = new Widget({ apiUrl: 'https://api.test/chat' });
+    widget.init();
+    getInternals(widget).client.sendMessage = vi.fn().mockImplementationOnce(async function* () {
+      yield { content: 'Partial' };
+      throw new Error('socket closed');
+    });
+
+    await getInternals(widget).handleSend('Hi');
+
+    const ids = Array.from(getInternals(widget).shadow.querySelectorAll('.cc-message-assistant'))
+      .map((el) => (el as HTMLElement).dataset.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    const last = getInternals(widget).messages.at(-1)!;
+    expect(last).toMatchObject({ status: 'error', content: 'Partial', errorType: 'network' });
+  });
+
   it('regenerates the last assistant response and sends the regenerate flag', async () => {
     const widget = new Widget({
       apiUrl: 'https://api.test/chat',
@@ -639,7 +691,7 @@ describe('Widget streaming timeout configuration', () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  it('keeps the existing partial-error UI when an active stream later stalls', async () => {
+  it('keeps the partial reply and adds the timeout error under it when an active stream later stalls', async () => {
     const transport = mockChatStream();
     widget = new Widget({ apiUrl: '/chat', timeout: 1000, persistHistory: false });
     widget.init();
@@ -652,9 +704,9 @@ describe('Widget streaming timeout configuration', () => {
     await pending;
 
     const reply = getInternals(widget).messages.at(-1)!;
-    expect(reply).toMatchObject({ status: 'error', errorType: 'timeout' });
-    expect(reply.content).not.toContain('Partial reply');
-    expect(getInternals(widget).shadow.textContent).not.toContain('Partial reply');
+    expect(reply).toMatchObject({ status: 'error', errorType: 'timeout', content: 'Partial reply' });
+    expect(getInternals(widget).shadow.textContent).toContain('Partial reply');
+    expect(getInternals(widget).shadow.querySelector('.cc-message-error-note')?.textContent).toBeTruthy();
     expect(vi.getTimerCount()).toBe(0);
   });
 

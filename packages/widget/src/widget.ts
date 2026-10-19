@@ -460,8 +460,7 @@ export class Widget {
         if (this.destroyed) break;
         if (chunk.error) {
           const errorType = this.resolveErrorType(chunk.error);
-          assistantMsg.content = this.getErrorMessage(errorType);
-          assistantMsg.status = 'error';
+          this.markFailed(assistantMsg, this.getErrorMessage(errorType));
           assistantMsg.errorType = errorType;
           hasError = true;
 
@@ -532,8 +531,7 @@ export class Widget {
     } catch (err) {
       if (this.destroyed) return;
 
-      assistantMsg.content = this.locale.errorGeneric;
-      assistantMsg.status = 'error';
+      this.markFailed(assistantMsg, this.locale.errorGeneric);
       assistantMsg.errorType = 'network';
 
       this.retryRequests.set(assistantMsg.id, {
@@ -542,7 +540,12 @@ export class Widget {
       });
 
       this.panel.messages.removeTyping();
-      this.panel.addMessage(assistantMsg);
+      // The bubble already exists if some of the reply streamed before the failure.
+      if (firstChunk) {
+        this.panel.addMessage(assistantMsg);
+      } else {
+        this.panel.messages.updateMessage(assistantMsg);
+      }
       this.messages.push(assistantMsg);
 
       const error = err instanceof Error ? err : new Error(String(err));
@@ -628,6 +631,19 @@ export class Widget {
         return error;
       default:
         return 'provider_error';
+    }
+  }
+
+  /**
+   * Marks a reply as failed. Text that already streamed stays, and the error
+   * shows as a note under it; an empty reply shows the error as its content.
+   */
+  private markFailed(message: MessageData, errorMessage: string): void {
+    message.status = 'error';
+    if (message.content.trim()) {
+      message.errorText = errorMessage;
+    } else {
+      message.content = errorMessage;
     }
   }
 

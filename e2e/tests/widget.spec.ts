@@ -85,3 +85,17 @@ function seriousOrWorse(violations: Array<{ id: string; impact?: string | null; 
     .filter((v) => v.impact === 'serious' || v.impact === 'critical')
     .map((v) => `${v.id} (${v.impact}, ${v.nodes.length} nodes)`);
 }
+
+test('a reply that fails partway keeps its text and shows the error under it', async ({ page }) => {
+  await page.locator(fab).click();
+  await page.locator(input).fill('Please fail midway');
+  await page.locator(send).click();
+
+  const reply = page.locator('.cc-message-assistant').last();
+  await expect(reply.locator('.cc-message-error-note')).toBeVisible();
+  await expect(reply.locator('.cc-message-content')).toHaveText('Hello from the');
+  await expect(reply.locator('.cc-message-retry')).toBeVisible();
+
+  const results = await new AxeBuilder({ page }).include('#chatcops-root').analyze();
+  expect(seriousOrWorse(results.violations)).toEqual([]);
+});

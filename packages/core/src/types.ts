@@ -77,10 +77,32 @@ export interface WebhookConfig {
   secret?: string;
 }
 
+/** How much effort a model spends on each reply. Lower is faster and cheaper. */
+export type ProviderEffort = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+
 export interface ProviderConfig {
   type: 'claude' | 'openai' | 'gemini';
   apiKey: string;
   model?: string;
+  /**
+   * Custom API endpoint, for proxies and OpenAI-compatible servers
+   * (Ollama, vLLM, Groq, OpenRouter). Passed to the provider SDK as is.
+   */
+  baseURL?: string;
+  /** OpenAI organization id. Ignored by other providers. */
+  organization?: string;
+  /**
+   * Reply effort for models that support it (Claude 4.6+, OpenAI reasoning
+   * models, Gemini thinking models). Defaults to `'low'`, which suits chat.
+   * Ignored by models without an effort setting.
+   */
+  effort?: ProviderEffort;
+  /**
+   * OpenAI only: the name of the output token limit sent to the API.
+   * Defaults to `'max_completion_tokens'`. Set `'max_tokens'` for
+   * OpenAI-compatible servers that only accept the old name.
+   */
+  maxTokensParam?: 'max_completion_tokens' | 'max_tokens';
 }
 
 export interface ProviderChatParams {

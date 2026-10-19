@@ -6,7 +6,8 @@ import {
   type ChatMessage,
 } from '@chatcops/core';
 import type { ChatCopsServerConfig, ValidatedChatRequest } from './config.js';
-import { chatRequestSchema, MAX_PAGE_URL_LENGTH } from './config.js';
+import { chatRequestSchema } from './config.js';
+import { VISITOR_CONTEXT_INSTRUCTION, buildVisitorContext, isLocaleTag, withVisitorContext } from './visitor-context.js';
 import { RateLimiter } from './rate-limit.js';
 import { WebhookDispatcher } from './webhook.js';
 
@@ -111,31 +112,19 @@ export function createChatHandler(config: ChatCopsServerConfig) {
       }
     }
 
-    // Add page context
-    if (req.pageContext) {
-      // A page URL can be very long (tracking parameters, tokens). The start is all the model needs.
-      const pageUrl = req.pageContext.url.slice(0, MAX_PAGE_URL_LENGTH);
-      systemPrompt += `\n\nThe user is currently on: ${pageUrl} (${req.pageContext.title})`;
-      if (req.pageContext.description) {
-        systemPrompt += `\nPage description: ${req.pageContext.description}`;
-      }
+    // Visitor-supplied page context and pre-chat answers never go into the
+    // system prompt; see visitor-context.ts.
+    const visitorContext = buildVisitorContext(req);
+    if (visitorContext) {
+      systemPrompt += `\n\n${VISITOR_CONTEXT_INSTRUCTION}`;
     }
 
-    // Add user data from pre-chat form
-    if (req.userData && Object.keys(req.userData).length > 0) {
-      const userInfo = Object.entries(req.userData)
-        .map(([key, val]) => `${key}: ${val}`)
-        .join(', ');
-      systemPrompt += `\n\nUser information: ${userInfo}`;
-    }
-
-    // Add locale info
-    if (req.locale) {
-      systemPrompt += `\n\nRespond in the user's language. Current locale: ${req.locale}`;
+    if (req.locale && isLocaleTag(req.locale)) {
+      systemPrompt += `\n\nReply in the visitor's language. Their browser locale is ${req.locale}.`;
     }
 
     // Get conversation messages for context
-    const messages = await conversations.getMessages(req.conversationId);
+    const messages = withVisitorContext(await conversations.getMessages(req.conversationId), visitorContext);
 
     // Stream response
     let fullResponse = '';

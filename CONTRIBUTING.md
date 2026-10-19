@@ -172,6 +172,18 @@ ANTHROPIC_API_KEY=sk-... npx tsx src/examples/express-server.ts
 
 `npx` downloads `tsx` the first time.
 
+### Browser tests
+
+The unit tests run in happy-dom. The tests in `e2e/` load the built widget in a real Chromium, against a small mock server that streams canned replies, and run an axe accessibility check:
+
+```bash
+pnpm --filter @chatcops/widget build
+pnpm exec playwright install chromium   # once
+pnpm e2e
+```
+
+They cover starting from the script tag, streaming, Escape and the tab order, the phone layout, and accessibility. CI runs them in the `e2e` job. Add a test there when you change how the widget behaves in a browser.
+
 ## Adding a new AI provider
 
 1. Create `packages/core/src/providers/{name}.ts`

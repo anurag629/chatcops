@@ -215,9 +215,11 @@ export function createChatHandler(config: ChatCopsServerConfig) {
       analytics?.track('message:received', { conversationId: req.conversationId });
     }
 
-    await awaitPendingWebhooks(pendingWebhooks);
-
+    // The reply is finished for the visitor, so say so first. Keeping the generator
+    // open until lead webhooks finish keeps serverless runtimes from cutting
+    // them off once the response ends.
     yield JSON.stringify({ done: true });
+    await awaitPendingWebhooks(pendingWebhooks);
   }
 
   function cleanup() {

@@ -503,16 +503,19 @@ describe('createChatHandler', () => {
     });
     expect(firstChunk.done).toBe(false);
 
-    // Verify stream completion waits for webhook resolution before sending done: true
+    // The visitor gets done: true right away, but the generator stays open
+    // until the webhook finishes, so serverless runtimes don't cut it off.
     let isStreamFinished = false;
+    const remaining: string[] = [];
     const streamCompletionPromise = (async () => {
-      for await (const _chunk of generator) {
-        // draining remainder
+      for await (const chunk of generator) {
+        remaining.push(chunk);
       }
       isStreamFinished = true;
     })();
 
     await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(remaining.map((chunk) => JSON.parse(chunk))).toContainEqual({ done: true });
     expect(isStreamFinished).toBe(false);
 
     // Resolving fetch allows the generator to finish awaiting pending webhooks

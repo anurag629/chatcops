@@ -113,6 +113,11 @@ export interface ProviderChatParams {
   toolTimeoutMs?: number;
   maxTokens?: number;
   temperature?: number;
+  /**
+   * Aborts the reply, for example when the visitor disconnects. The provider
+   * request is cancelled and no further tool rounds start.
+   */
+  signal?: AbortSignal;
 }
 
 export interface AnalyticsEvent {

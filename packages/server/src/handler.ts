@@ -26,10 +26,17 @@ export function createChatHandler(config: ChatCopsServerConfig) {
   // Periodic cleanup
   const cleanupInterval = setInterval(() => rateLimiter.cleanup(), 60_000);
 
+  /**
+   * Streams one reply. Pass `options.signal` to stop when the visitor goes
+   * away: the provider request is cancelled, nothing more is yielded, and the
+   * partial reply isn't saved.
+   */
   async function* handleChat(
     body: unknown,
-    clientIp?: string
+    clientIp?: string,
+    options: { signal?: AbortSignal } = {}
   ): AsyncGenerator<string> {
+    const { signal } = options;
     const provider = await providerPromise;
     // Validate request
     const parsed = chatRequestSchema.safeParse(body);
@@ -142,6 +149,7 @@ export function createChatHandler(config: ChatCopsServerConfig) {
         toolTimeoutMs: config.toolTimeoutMs,
         maxTokens: config.maxTokens,
         temperature: config.temperature,
+        signal,
         toolExecutor: async (toolCall) => {
           const tool = toolsByName.get(toolCall.name);
           if (!tool) {
@@ -178,6 +186,7 @@ export function createChatHandler(config: ChatCopsServerConfig) {
           return result;
         },
       })) {
+        if (signal?.aborted) break;
         while (pendingEvents.length > 0) {
           yield pendingEvents.shift()!;
         }
@@ -189,9 +198,19 @@ export function createChatHandler(config: ChatCopsServerConfig) {
         yield pendingEvents.shift()!;
       }
     } catch (err) {
+      if (signal?.aborted) {
+        // The visitor left. Let lead webhooks finish, but write nothing else.
+        await awaitPendingWebhooks(pendingWebhooks);
+        return;
+      }
       console.error('[chatcops] Provider error:', err);
       await awaitPendingWebhooks(pendingWebhooks);
       yield JSON.stringify({ error: 'provider_error' });
+      return;
+    }
+
+    if (signal?.aborted) {
+      await awaitPendingWebhooks(pendingWebhooks);
       return;
     }
 
